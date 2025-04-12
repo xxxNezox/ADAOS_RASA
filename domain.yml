@@ -1,0 +1,99 @@
+version: "3.1"
+
+entities:
+  - location
+
+forms:
+  search_form:
+    required_slots:
+      - search_query
+
+  new_intent_form:
+    required_slots:
+      - new_intent_name
+      - new_intent_info
+  
+slots:
+  new_intent_name:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_text
+        conditions:
+          - active_loop: new_intent_form
+            requested_slot: new_intent_name
+
+  new_intent_info:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_text
+        conditions:
+          - active_loop: new_intent_form
+            requested_slot: new_intent_info
+
+  search_query:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_text
+        conditions:
+          - active_loop: search_form
+            requested_slot: search_query
+
+  last_entity_value:
+    type: text
+    influence_conversation: false
+    mappings:
+    - type: from_entity
+      entity: location
+
+  last_entity_name:
+    type: text
+    mappings:
+    - type: from_intent
+      value: location
+      intent: ask_weather
+
+  cmd_create_command:
+    type: categorical
+    values:
+      - create_folder
+      - create_file
+      - delete_folder
+      - delete_file
+    influence_conversation: false
+    mappings:
+      - type: from_text
+
+intents:
+  - ask_time
+  - ask_weather
+  - ask_GPT
+  - create_file
+  - create_folder
+  - delete_file
+  - delete_folder
+  - learn_new_intent
+
+actions:
+  - action_show_time
+  - action_get_weather
+  - action_save_example_to_intent
+  - action_ask_GPT
+  - action_create_command
+  - action_learn_new_intent
+
+responses:
+  utter_ask_GPT:
+  - text: "Какой вопрос вас интерисует?"
+
+  utter_ask_intent:
+  - text: "Какое имя мне использовать для интента(на английском)"
+
+  utter_ask_new_intent_info:
+  - text: "Хорошо, это имя будет использоваться для интента. Теперь опишите, что должен делать интент"
+
+session_config:
+  session_expiration_time: 60
+  carry_over_slots_to_new_session: true
