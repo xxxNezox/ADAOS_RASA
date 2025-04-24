@@ -32,34 +32,6 @@ rules:
     - action: action_ask_GPT
     - action: action_save_example_to_intent
 
-- rule: Создать файл
-  steps:
-    - intent: create_file
-    - slot_was_set:
-      - cmd_create_command: create_file
-    - action: action_create_command
-
-- rule: Создать папку
-  steps:
-    - intent: create_folder
-    - slot_was_set:
-      - cmd_create_command: create_folder
-    - action: action_create_command
-
-- rule: Удалить файл
-  steps:
-    - intent: delete_file
-    - slot_was_set:
-      - cmd_create_command: delete_file
-    - action: action_create_command
-
-- rule: Удалить папку
-  steps:
-    - intent: delete_folder
-    - slot_was_set:
-      - cmd_create_command: delete_folder
-    - action: action_create_command
-
 - rule: Создать новый интент
   steps:
     - intent: learn_new_intent
@@ -76,3 +48,39 @@ rules:
     - slot_was_set:
       - requested_slot: null
     - action: action_learn_new_intent
+
+- rule: Научиться новой bash команде
+  steps:
+    - intent: learn_new_bash
+    - action: utter_ask_bash
+    - action: bash_harmness_form
+    - active_loop: bash_harmness_form
+
+- rule: Подтверждение запроса пользователя на баш
+  condition:
+    - active_loop: bash_harmness_form
+  steps:
+    - action: bash_harmness_form
+    - active_loop: null
+    - slot_was_set:
+      - requested_slot: null
+    - action: action_check_bash_harmness
+    - action: action_learn_new_bash
+
+- rule: Научиться новому коду
+  steps:
+    - intent: learn_new_code
+    - action: utter_ask_code
+    - action: code_harmness_form
+    - active_loop: code_harmness_form
+
+- rule: Подтверждение запроса пользователя на код
+  condition:
+    - active_loop: code_harmness_form
+  steps:
+    - action: code_harmness_form
+    - active_loop: null
+    - slot_was_set:
+      - requested_slot: null
+    - action: action_check_code_harmness
+    - action: action_learn_new_code

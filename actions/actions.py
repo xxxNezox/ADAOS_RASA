@@ -8,6 +8,7 @@ import os
 from openai import OpenAI
 import json
 
+API_KEY = os.getenv("API_KEY")
 
 #-----------------------------------------Вопрос к ГПТ-----------------------------------------#
 class ActionAskGPT(Action):
@@ -20,7 +21,7 @@ class ActionAskGPT(Action):
 
         client = OpenAI(
             base_url="https://models.inference.ai.azure.com",
-            api_key= ""
+            api_key= API_KEY
     )
         
         response =  client.chat.completions.create(
@@ -59,61 +60,67 @@ class АctionLearnNewCode(Action):
 
     def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict):
 
-        client = OpenAI(
-            base_url="https://models.inference.ai.azure.com",
-            api_key= ""
-    )
+        harmness = tracker.get_slot("code_y_o_n")
 
-        code_name = tracker.get_slot("new_intent_name")
-        code_info = tracker.get_slot("new_intent_info")
+        if harmness == True:
+            dispatcher.utter_message(json_message = {"type":"code", "data": f"Я не стану выполнять этот код. Он может навредить вашему ПК"})
+            return[SlotSet("new_request_name"), SlotSet("new_request_info")]
+        else:    
+            client = OpenAI(
+                base_url="https://models.inference.ai.azure.com",
+                api_key= API_KEY
+            )
 
-        print(code_name)
-        print(code_info)
+            code_name = tracker.get_slot("new_code_name")
+            code_purpose = tracker.get_slot("new_code_info")
 
-        response =  client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"You are code creator on python. Please, provide response in JSON. Store answer in dictionary 'answer'. In this dictionary must be 1 key: '{code_name}'. Response must be string ",
-                },
-                {
-                    "role": "user",
-                    "content": f"Напиши мне код с названием файла: {code_name}.py, Этот код должен выполнять следующие действия: {code_info}"
-                }
-            ],
-            model="gpt-4o",
-            response_format={ "type" : "json_object"},
-            temperature=.3,
-            max_tokens=2048,
-            top_p=1
-        )
+            response =  client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": f"Write Python code that solves the following task: {code_purpose}. Instead of outputting the code as plain text, return it as a JSON object. Do not serialize the whole JSON as a string. Each line of code should be a plain string in a list, and the full output must be a proper JSON object, and the structure must be: {{'answer': {{'{code_name}': ['line of code 1','line of code 2','line of code 3','...']}}}}. Make sure all quotes and special characters are properly escaped so that the output is valid JSON."
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Создай мне Python код с названием: {code_name}. Код должен выполнять следующее: {code_purpose}"
+                    }
+                ],
+                model="gpt-4o",
+                response_format={ "type" : "json_object"},
+                temperature=.3,
+                max_tokens=2048,
+                top_p=1
+            )
 
-        data = json.loads(response.choices[0].message.content)
+            data = json.loads(response.choices[0].message.content)
+
+            dispatcher.utter_message(json_message = {"type":"code", "data": f"{data}"})
+            return[SlotSet("new_code_name"), SlotSet("new_code_info"), SlotSet("code_y_o_n")]
 
 
-#-----------------------------------------Сделать первичную проверку опасности-----------------------------------------#
-class АctionCheckHarmness(Action):
+#-----------------------------------------Сделать первичную проверку опасности баша-----------------------------------------#
+class АctionCheckCodeHarmness(Action):
     def name(self) -> str:
-        return "action_check_harmness"
+        return "action_check_code_harmness"
     
     def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict):
         
         client = OpenAI(
             base_url="https://models.inference.ai.azure.com",
-            api_key= ""
+            api_key= API_KEY
     )
 
-        check_code = tracker.latest_message.get("text")
+        check_request = tracker.latest_message.get("text")
 
         response =  client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
-                    "content": f"You are hamrness checker. Please, provide response in JSON. Store answer in dictionary 'answer'. In this dictionary must be 2 key: 'y_o' and 'why'. You must provide at least 10 examples. Response must be string ",
+                    "content": "You are an assistant checking if a user’s request for a bash command or python code is potentially harmful. Respond ONLY in valid JSON format with the following structure: {'answer': {'code_y_o_n': 'Yes' if it can bring severe harm to user PC or even destroy it or 'No' if it relatively harmless, 'why': 'Brief explanation in Russian language'}}. Do not wrap the `data` dictionary in quotes. `data` must be a JSON object, not a string. Do not include backslashes or escape quotes inside values unnecessarily. Return raw JSON only, with no extra text.",
                 },
                 {
                     "role": "user",
-                    "content": f"Проверь такой запрос пользователя: {check_code}. Если он имеет высокую угрозу файлам пользователя, то напиши почему. Запиши в ключ 'y_o' ответ 'Да' или 'Нет' в зависимости от того, опасен ли код. В ключ 'why' запиши причину, почему он опасен."
+                    "content": f"Проверь такой запрос пользователя: {check_request}."
                 }
             ],
             model="gpt-4o",
@@ -125,8 +132,51 @@ class АctionCheckHarmness(Action):
 
         data = json.loads(response.choices[0].message.content)
 
-        dispatcher.utter_message(json_message = {"type":"check_command", "data": f"{data}"})
+        if data["answer"]["code_y_o_n"].lower() == "yes":
+            return[SlotSet("code_y_o_n", True)]
+        else:
+            return[SlotSet("code_y_o_n", False)]
 
+
+#-----------------------------------------Сделать первичную проверку опасности кода-----------------------------------------#
+class АctionCheckBashHarmness(Action):
+    def name(self) -> str:
+        return "action_check_bash_harmness"
+    
+    def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict):
+        
+        client = OpenAI(
+            base_url="https://models.inference.ai.azure.com",
+            api_key= API_KEY
+    )
+
+        check_request = tracker.latest_message.get("text")
+
+        response =  client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an assistant checking if a user’s request for a bash command or python code is potentially harmful. Respond ONLY in valid JSON format with the following structure: {'answer': {'bash_y_o_n': 'Yes' if it can bring severe harm to user PC or even destroy it or 'No' if it relatively harmless, 'why': 'Brief explanation in Russian language'}}. Do not wrap the `data` dictionary in quotes. `data` must be a JSON object, not a string. Do not include backslashes or escape quotes inside values unnecessarily. Return raw JSON only, with no extra text.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Проверь такой запрос пользователя: {check_request}."
+                }
+            ],
+            model="gpt-4o",
+            response_format={ "type" : "json_object"},
+            temperature=.3,
+            max_tokens=2048,
+            top_p=1
+        )
+
+        data = json.loads(response.choices[0].message.content)
+
+        if data["answer"]["bash_y_o_n"].lower() == "yes":
+            return[SlotSet("bash_y_o_n", True)]
+        else:
+            return[SlotSet("bash_y_o_n", False)]
+        
 
 #-----------------------------------------Научиться новому башу-----------------------------------------#
 class АctionLearnNewBash(Action):
@@ -135,36 +185,42 @@ class АctionLearnNewBash(Action):
     
     def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict):
         
-        client = OpenAI(
-            base_url="https://models.inference.ai.azure.com",
-            api_key= ""
-    )
+        harmness = tracker.get_slot("bash_y_o_n")
 
-        bash_name = tracker.get_slot("new_intent_name")
-        bash_purpose = tracker.get_slot("new_intent_info")
+        if harmness == True:
+            dispatcher.utter_message(json_message = {"type":"bash", "data": f"Я не стану выполнять эту команду, она имеет высокую угрозу стабильности ПК"})
+            return[SlotSet("new_request_name"), SlotSet("new_request_info")]
+        else:    
+            client = OpenAI(
+                base_url="https://models.inference.ai.azure.com",
+                api_key= API_KEY
+            )
 
-        print(bash_name)
-        print(bash_purpose)
+            bash_name = tracker.get_slot("new_request_name")
+            bash_purpose = tracker.get_slot("new_request_info")
 
-        response =  client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"You are bash command's creator. Please, provide response in JSON. Store answer in dictionary 'answer'. In this dictionary must be 1 key: '{bash_name}'. You must provide at least 10 examples. Response must be string ",
-                },
-                {
-                    "role": "user",
-                    "content": f"Создай мне bash команду с названием: {bash_name}. Эта команда должна выполнять следующее действие: {bash_purpose}"
-                }
-            ],
-            model="gpt-4o",
-            response_format={ "type" : "json_object"},
-            temperature=.3,
-            max_tokens=2048,
-            top_p=1
-        )
+            response =  client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": f"You are bash command creator for Windows powershell. Do not use backslashes or escape quotes. Respond ONLY in valid JSON format with the following structure: {{'answer': {{'{bash_name}': Put created bash command here}}}}. Do not wrap the `data` dictionary in quotes. `data` must be a JSON object, not a string. Return raw JSON only, with no extra text. ",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Создай мне bash команду с названием: {bash_name}. Эта команда должна выполнять следующее действие: {bash_purpose}"
+                    }
+                ],
+                model="gpt-4o",
+                response_format={ "type" : "json_object"},
+                temperature=.3,
+                max_tokens=2048,
+                top_p=1
+            )
 
-        data = json.loads(response.choices[0].message.content)
+            data = json.loads(response.choices[0].message.content)
+
+            dispatcher.utter_message(json_message = {"type":"bash", "data": f"{data['answer'][f'{bash_name}']}"})
+            return[SlotSet("new_bash_name"), SlotSet("new_bash_info"), SlotSet("bash_y_o_n")]
 
 
 #-----------------------------------------Научиться новому интенту-----------------------------------------#
@@ -176,7 +232,7 @@ class АctionLearnNewIntent(Action):
 
         client = OpenAI(
             base_url="https://models.inference.ai.azure.com",
-            api_key= ""
+            api_key= API_KEY
     )
 
         intent_name = tracker.get_slot("new_intent_name")
@@ -270,27 +326,6 @@ class АctionSaveExampleToIntent(Action):
             file.write(f"\n    - {message}")
 
         return [SlotSet("last_entity_name"), SlotSet(("last_entity_value"))]
-
-
-#-----------------------------------------Создать команду для powershell-----------------------------------------#
-class ActionCreateCommand(Action):
-    def name(self) -> str:
-        return "action_create_command"
-    
-    def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict):
-
-        command = tracker.get_intent_of_latest_message()
-
-        if command == "create_folder":
-            user_command = 'mkdir "C:\\Users\\plant\\Desktop\\new_folder"'
-        elif command == "delete_folder":
-            user_command = 'Remove-Item -Path "C:\\Users\\plant\\Desktop\\new_folder" -Recurse -Force'
-        elif command == "create_file":
-            user_command = 'New-Item -Path "C:\\Users\\plant\\Desktop\\file.txt" -ItemType File -Force'
-        elif command == "delete_file":
-            user_command = 'Remove-Item -Path "C:\\Users\\plant\\Desktop\\file.txt" -Force'
-
-        dispatcher.utter_message(json_message = {"type":"bash", "data": f"{user_command}"})
 
 
 #-----------------------------------------Получить время-----------------------------------------#

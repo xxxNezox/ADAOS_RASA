@@ -1,9 +1,19 @@
 version: "3.1"
-
+#-------------------------------------------------Entities-------------------------------------------------
 entities:
   - location
-
+#-------------------------------------------------Forms-------------------------------------------------  
 forms:
+  code_harmness_form:
+    required_slots:
+      - new_code_name
+      - new_code_info
+
+  bash_harmness_form:
+    required_slots:
+      - new_bash_name
+      - new_bash_info
+
   search_form:
     required_slots:
       - search_query
@@ -12,8 +22,56 @@ forms:
     required_slots:
       - new_intent_name
       - new_intent_info
-  
+#-------------------------------------------------Slots-------------------------------------------------
 slots:
+  new_bash_name:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_text
+        conditions:
+          - active_loop: bash_harmness_form
+            requested_slot: new_bash_name
+  
+  new_code_name:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_text
+        conditions:
+          - active_loop: code_harmness_form
+            requested_slot: new_code_name
+  
+  new_bash_info:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_text
+        conditions:
+          - active_loop: bash_harmness_form
+            requested_slot: new_bash_info
+  
+  new_code_info:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_text
+        conditions:
+          - active_loop: code_harmness_form
+            requested_slot: new_code_info
+
+  code_y_o_n:
+    type: bool
+    influence_conversation: false
+    mappings:
+      - type: from_text
+  
+  bash_y_o_n:
+    type: bool
+    influence_conversation: false
+    mappings:
+      - type: from_text
+
   new_intent_name:
     type: text
     influence_conversation: false
@@ -54,36 +112,26 @@ slots:
     - type: from_intent
       value: location
       intent: ask_weather
-
-  cmd_create_command:
-    type: categorical
-    values:
-      - create_folder
-      - create_file
-      - delete_folder
-      - delete_file
-    influence_conversation: false
-    mappings:
-      - type: from_text
-
+#-------------------------------------------------Intents-------------------------------------------------
 intents:
   - ask_time
   - ask_weather
   - ask_GPT
-  - create_file
-  - create_folder
-  - delete_file
-  - delete_folder
   - learn_new_intent
-
+  - learn_new_bash
+  - learn_new_code
+#-------------------------------------------------Actions-------------------------------------------------
 actions:
   - action_show_time
   - action_get_weather
   - action_save_example_to_intent
   - action_ask_GPT
-  - action_create_command
   - action_learn_new_intent
-
+  - action_learn_new_bash
+  - action_learn_new_code
+  - action_check_code_harmness
+  - action_check_bash_harmness
+#-------------------------------------------------Responses-------------------------------------------------
 responses:
   utter_ask_GPT:
   - text: "Какой вопрос вас интерисует?"
@@ -94,6 +142,27 @@ responses:
   utter_ask_new_intent_info:
   - text: "Хорошо, это имя будет использоваться для интента. Теперь опишите, что должен делать интент"
 
+  utter_ask_new_bash_info:
+  - text: "Хорошо, это название будет использоваться для bash команды. Теперь опишите подробно функционал."
+  - text: "Значит так будет называться команда. Опишите подробно, что она будет делать."
+  - text: "Название принято. В подробности опишите, что будет делать команда."
+
+  utter_ask_bash:
+  - text: "Как мне назвать bash команду?"
+  - text: "Какое название файла мне использовать?"
+  - text: "Дайте название команде!"
+
+  utter_ask_new_code_info:
+  - text: "Это название будет использоваться для файла с кодом. Теперь подробно опишите, что будет делать код."
+  - text: "Поняла, это название будет использоваться для готового файла. Теперь опишите подробно функционал."
+  - text: "Название принято. Вам необходимо расписать в деталях, что требуется от кода."
+
+  utter_ask_code:
+  - text: "Необходимо как-то назвать файл с кодом"
+  - text: "Какое название файла мне использовать?"
+  - text: "Придумайте название для кода"
+
+#-------------------------------------------------Config-------------------------------------------------
 session_config:
   session_expiration_time: 60
   carry_over_slots_to_new_session: true
