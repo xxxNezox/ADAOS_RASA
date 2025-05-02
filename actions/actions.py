@@ -74,22 +74,47 @@ class АctionLearnNewCode(Action):
             code_name = tracker.get_slot("new_code_name")
             code_purpose = tracker.get_slot("new_code_info")
 
-            response =  client.chat.completions.create(
+            response = client.chat.completions.create(
                 messages=[
                     {
                         "role": "system",
-                        "content": f"Write Python code that solves the following task: {code_purpose}. Instead of outputting the code as plain text, return it as a JSON object. Do not serialize the whole JSON as a string. Each line of code should be a plain string in a list, and the full output must be a proper JSON object, and the structure must be: {{'answer': {{'{code_name}': ['line of code 1','line of code 2','line of code 3','...']}}}}. Make sure all quotes and special characters are properly escaped so that the output is valid JSON."
+                        "content": f"""You are a coding assistant that generates Python code in strict JSON format.
+                        Requirements:
+                        1. Generate code that solves: {code_purpose}
+                        2. Response must be VALID JSON (not a JSON string)
+                        3. Format: {{"answer": {{"{code_name}": ["line 1", "line 2", ...]}}}}
+                        4. Each line of code must be a separate array element
+                        5. Preserve proper indentation in code lines
+                        6. Escape all quotes and special characters correctly
+                        7. Include all necessary imports
+                        8. Never add explanations outside the JSON structure
+                        
+                        Example of correct output:
+                        {{
+                            "answer": {{
+                                "sample_code": [
+                                    "import math",
+                                    "",
+                                    "def calculate_circle_area(radius):",
+                                    "    return math.pi * radius ** 2",
+                                    "",
+                                    "print(calculate_circle_area(5))"
+                                ]
+                            }}
+                        }}"""
                     },
                     {
                         "role": "user",
-                        "content": f"Создай мне Python код с названием: {code_name}. Код должен выполнять следующее: {code_purpose}"
+                        "content": f"Generate Python code named '{code_name}' that: {code_purpose}. You MUST follow the specified JSON format exactly."
                     }
                 ],
                 model="gpt-4o",
-                response_format={ "type" : "json_object"},
-                temperature=.3,
+                response_format={"type": "json_object"},
+                temperature=0.2,  # Lower for more deterministic output
                 max_tokens=2048,
-                top_p=1
+                top_p=0.9,
+                frequency_penalty=0.1,  # Slightly discourages repetition
+                presence_penalty=0.1  # Encourages all required elements
             )
 
             data = json.loads(response.choices[0].message.content)
@@ -112,22 +137,50 @@ class АctionCheckCodeHarmness(Action):
 
         check_request = tracker.latest_message.get("text")
 
-        response =  client.chat.completions.create(
+        response = client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an assistant checking if a user’s request for a bash command or python code is potentially harmful. Respond ONLY in valid JSON format with the following structure: {'answer': {'code_y_o_n': 'Yes' if it can bring severe harm to user PC or even destroy it or 'No' if it relatively harmless, 'why': 'Brief explanation in Russian language'}}. Do not wrap the `data` dictionary in quotes. `data` must be a JSON object, not a string. Do not include backslashes or escape quotes inside values unnecessarily. Return raw JSON only, with no extra text.",
+                    "content": """You are a security assistant that evaluates bash/Python requests for potential harm. 
+                    Response MUST be RAW JSON (not stringified) with EXACT structure:
+                    {
+                        "answer": {
+                            "code_y_o_n": "Yes"|"No",
+                            "why": "Объяснение на русском (15-30 слов)"
+                        }
+                    }
+                    
+                    Rules:
+                    1. "Yes" only for commands that can:
+                    - Permanently delete data
+                    - Damage hardware
+                    - Compromise security
+                    - Cause irreversible system changes
+                    2. "No" for normal/administrative commands
+                    3. Explanation must be concise and technical
+                    4. Never include markdown or code blocks
+                    5. Escape only necessary special characters
+                    6. No additional fields or comments
+                    
+                    Example valid response:
+                    {
+                        "answer": {
+                            "code_y_o_n": "Yes",
+                            "why": "Команда удаляет системные файлы без возможности восстановления"
+                        }
+                    }"""
                 },
                 {
                     "role": "user",
-                    "content": f"Проверь такой запрос пользователя: {check_request}."
+                    "content": f"Оцени потенциальный вред этого запроса: {check_request}. Ответь ТОЛЬКО в указанном JSON формате."
                 }
             ],
             model="gpt-4o",
-            response_format={ "type" : "json_object"},
-            temperature=.3,
-            max_tokens=2048,
-            top_p=1
+            response_format={"type": "json_object"},
+            temperature=0.1,  # Lower for strict compliance
+            max_tokens=256,   # Sufficient for this response
+            top_p=0.8,
+            frequency_penalty=0.5  # Reduces unnecessary variations
         )
 
         data = json.loads(response.choices[0].message.content)
@@ -152,22 +205,64 @@ class АctionCheckBashHarmness(Action):
 
         check_request = tracker.latest_message.get("text")
 
-        response =  client.chat.completions.create(
+        response = client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an assistant checking if a user’s request for a bash command or python code is potentially harmful. Respond ONLY in valid JSON format with the following structure: {'answer': {'bash_y_o_n': 'Yes' if it can bring severe harm to user PC or even destroy it or 'No' if it relatively harmless, 'why': 'Brief explanation in Russian language'}}. Do not wrap the `data` dictionary in quotes. `data` must be a JSON object, not a string. Do not include backslashes or escape quotes inside values unnecessarily. Return raw JSON only, with no extra text.",
+                    "content": """You are a security analyzer that evaluates bash/Python commands for potential harm. 
+                    Respond with STRICT JSON format (not a string) using this EXACT structure:
+                    {
+                        "answer": {
+                            "bash_y_o_n": "Yes" or "No",
+                            "why": "Краткое объяснение на русском (15-30 слов)"
+                        }
+                    }
+
+                    CRITICAL RULES:
+                    1. Answer "Yes" ONLY for commands that can:
+                    - Permanently delete critical system files
+                    - Execute rm -rf / or similar destructive operations
+                    - Install malware or compromise security
+                    - Overwrite hardware firmware
+                    - Cause irreversible system damage
+                    
+                    2. Answer "No" for:
+                    - Normal system administration
+                    - File operations in non-system directories
+                    - Safe software installation
+                    - Non-destructive debugging
+                    
+                    3. Russian explanation must:
+                    - Be concise and technical
+                    - Clearly state the potential danger
+                    - Avoid vague language
+                    
+                    4. JSON requirements:
+                    - No outer quotes or backslashes
+                    - No markdown or code blocks
+                    - No additional fields or comments
+                    - Proper UTF-8 encoding for Russian text
+
+                    Example valid response:
+                    {
+                        "answer": {
+                            "bash_y_o_n": "Yes",
+                            "why": "Команда выполняет рекурсивное удаление системных файлов без подтверждения"
+                        }
+                    }"""
                 },
                 {
                     "role": "user",
-                    "content": f"Проверь такой запрос пользователя: {check_request}."
+                    "content": f"Проанализируй этот запрос на опасность: {check_request}. Ответь ТОЛЬКО в указанном JSON формате без каких-либо дополнительных комментариев."
                 }
             ],
             model="gpt-4o",
-            response_format={ "type" : "json_object"},
-            temperature=.3,
-            max_tokens=2048,
-            top_p=1
+            response_format={"type": "json_object"},
+            temperature=0.1,  # Very low for maximum consistency
+            max_tokens=300,   # Enough for the response
+            top_p=0.9,
+            frequency_penalty=0.7,  # Strongly discourages deviations
+            presence_penalty=0.3
         )
 
         data = json.loads(response.choices[0].message.content)
@@ -199,22 +294,55 @@ class АctionLearnNewBash(Action):
             bash_name = tracker.get_slot("new_request_name")
             bash_purpose = tracker.get_slot("new_request_info")
 
-            response =  client.chat.completions.create(
+            response = client.chat.completions.create(
                 messages=[
                     {
                         "role": "system",
-                        "content": f"You are bash command creator for Windows powershell. Do not use backslashes or escape quotes. Respond ONLY in valid JSON format with the following structure: {{'answer': {{'{bash_name}': Put created bash command here}}}}. Do not wrap the `data` dictionary in quotes. `data` must be a JSON object, not a string. Return raw JSON only, with no extra text. ",
+                        "content": """You are a PowerShell command generator for Windows systems. 
+                        Respond ONLY in raw JSON format (not a string) using this EXACT structure:
+                        {
+                            "answer": {
+                                "[BASH_NAME]": "powershell -Command \"[ACTUAL_COMMAND]\""
+                            }
+                        }
+
+                        STRICT REQUIREMENTS:
+                        1. Commands must:
+                        - Be valid PowerShell syntax
+                        - Work on Windows 10/11
+                        - Use proper escaping for nested quotes
+                        - Be executable as one-liner
+                        
+                        2. JSON must:
+                        - Be valid JSON object (not stringified)
+                        - Contain no backslashes except for escaping quotes
+                        - Have no outer quotes or markdown
+                        - Include no explanations
+                        
+                        3. For the command:
+                        - Prefer native PowerShell cmdlets
+                        - Use full parameter names
+                        - Add -ErrorAction Stop where appropriate
+                        - Include required -Confirm for dangerous operations
+
+                        Example valid response:
+                        {
+                            "answer": {
+                                "list_processes": "powershell -Command \"Get-Process | Select-Object Name, CPU, Id\""
+                            }
+                        }"""
                     },
                     {
                         "role": "user",
-                        "content": f"Создай мне bash команду с названием: {bash_name}. Эта команда должна выполнять следующее действие: {bash_purpose}"
+                        "content": f"Сгенерируй PowerShell команду с названием '{bash_name}' для: {bash_purpose}. Ответ должен быть ТОЛЬКО в указанном JSON формате."
                     }
                 ],
                 model="gpt-4o",
-                response_format={ "type" : "json_object"},
-                temperature=.3,
-                max_tokens=2048,
-                top_p=1
+                response_format={"type": "json_object"},
+                temperature=0.2,  # Lower for more predictable output
+                max_tokens=512,   # Sufficient for most commands
+                top_p=0.95,
+                frequency_penalty=0.5  # Reduces command variations
             )
 
             data = json.loads(response.choices[0].message.content)
@@ -241,22 +369,62 @@ class АctionLearnNewIntent(Action):
         print(intent_name)
         print(intent_purpose)
 
-        response =  client.chat.completions.create(
+        response = client.chat.completions.create(
             messages=[
                 {
                     "role": "system",
-                    "content": f"You are example creator for intents in RASA. Please, provide response in JSON. Store answer in dictionary 'answer'. In this dictionary must be 1 key: '{intent_name}'. It must be list on examples. You must provide at least 10 examples. Response must be string ",
+                    "content": f"""You are a RASA NLU training data generator. Generate exactly 12 diverse examples for user utterances matching the intent.
+                    
+                    STRICT REQUIREMENTS:
+                    1. Response must be VALID JSON (not stringified) with structure:
+                    {{
+                        "answer": {{
+                            "{intent_name}": [
+                                "example 1",
+                                "example 2",
+                                ...
+                                "example 12"
+                            ]
+                        }}
+                    }}
+                    
+                    2. Examples must:
+                    - Cover different phrasings (minimum 12 examples)
+                    - Include variations with/without entities
+                    - Use natural language patterns
+                    - Match the intent purpose: {intent_purpose}
+                    - Be in Russian unless specified otherwise
+                    
+                    3. JSON must:
+                    - Be a direct object (not wrapped in quotes)
+                    - Use proper UTF-8 encoding
+                    - Contain no backslashes except for escaping quotes
+                    - Have no additional explanations
+                    
+                    Example valid response:
+                    {{
+                        "answer": {{
+                            "book_flight": [
+                                "Хочу забронировать билет на самолёт",
+                                "Мне нужно купить авиабилеты",
+                                "Как заказать рейс в Москву?",
+                                ...
+                            ]
+                        }}
+                    }}"""
                 },
                 {
                     "role": "user",
-                    "content": f"Создай мне примеры для интента: {intent_name}, Этот интент имеет следующее назначение: {intent_purpose}"
+                    "content": f"Сгенерируй 12 примеров фраз для интента '{intent_name}'. Назначение интента: {intent_purpose}. Ответ должен быть ТОЛЬКО в указанном JSON формате без дополнительных комментариев."
                 }
             ],
             model="gpt-4o",
-            response_format={ "type" : "json_object"},
-            temperature=.3,
-            max_tokens=2048,
-            top_p=1
+            response_format={"type": "json_object"},
+            temperature=0.7,  # Balanced for diversity vs consistency
+            max_tokens=1024,
+            top_p=0.9,
+            frequency_penalty=0.3,
+            presence_penalty=0.2
         )
 
         data = json.loads(response.choices[0].message.content)
