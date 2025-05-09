@@ -7,6 +7,8 @@ import pymorphy2
 import os
 from openai import OpenAI
 import json
+import ast
+import base64
 
 API_KEY = os.getenv("API_KEY")
 
@@ -110,16 +112,28 @@ class АctionLearnNewCode(Action):
                 ],
                 model="gpt-4o",
                 response_format={"type": "json_object"},
-                temperature=0.2,  # Lower for more deterministic output
+                temperature=0.2,
                 max_tokens=2048,
                 top_p=0.9,
-                frequency_penalty=0.1,  # Slightly discourages repetition
-                presence_penalty=0.1  # Encourages all required elements
+                frequency_penalty=0.1,
+                presence_penalty=0.1
             )
 
             data = json.loads(response.choices[0].message.content)
 
-            dispatcher.utter_message(json_message = {"type":"code", "data": f"{data}"})
+            lines = data['answer'][f'{code_name}']
+
+            with open(f'{code_name}.py', 'w', encoding='utf-8') as f:
+                for line in lines:
+                    f.write(str(line).replace('\\"', '"') + '\n')
+
+            with open('example.txt', 'rb') as file:
+                file_data = file.read()
+
+            encoded_data = base64.b64encode(file_data).decode('utf-8')
+
+            dispatcher.utter_message(json_message = {"type":"code", "file_name":f"{code_name}", "data": f"{encoded_data}"})
+
             return[SlotSet("new_code_name"), SlotSet("new_code_info"), SlotSet("code_y_o_n")]
 
 
