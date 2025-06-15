@@ -1,27 +1,24 @@
-import json
-import base64
+from openai import OpenAI
+import os
 
-code_name = 'aboba'
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API")
 
-with open('pivo.py', 'rb') as file:
-    file_data = file.read()
+client = OpenAI(
+  base_url="https://openrouter.ai/api/v1",
+  api_key= DEEPSEEK_API_KEY,
+)
 
-# Кодируем бинарные данные в строку Base64
-encoded_data = base64.b64encode(file_data).decode('utf-8')
-
-json_message = {
-    "type": "code",
-    "file_name": f"{code_name}",
-    "data": f"{encoded_data}"
-}
-
-file_name = json_message["file_name"]
-
-# 2. Декодируем base64 в байты
-file_data = base64.b64decode(json_message["data"])
-
-# 3. Сохраняем в файл
-with open(f"{file_name}.py", "wb") as f:
-    f.write(file_data)
-
-print(f"Файл {file_name} успешно сохранён.")
+response =  client.chat.completions.create(
+        model="deepseek/deepseek-r1-0528-qwen3-8b:free",
+        messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant. Please, provide response in JSON. Store answer in dictionary 'answer'. In this dictionary must be 2 keys: 'question' and 'response'. Response must be string",
+                },
+                {
+                    "role": "user",
+                    "content": "Сколько пива можешь назвать видов",
+                }
+            ]
+        )
+print(response.choices[0].message.content)

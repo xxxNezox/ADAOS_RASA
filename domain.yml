@@ -129,8 +129,6 @@ actions:
   - action_learn_new_intent
   - action_learn_new_bash
   - action_learn_new_code
-  - action_check_code_harmness
-  - action_check_bash_harmness
 #-------------------------------------------------Responses-------------------------------------------------
 responses:
   utter_ask_GPT:
